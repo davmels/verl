@@ -653,7 +653,11 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         # TODO: add more optimizer args into config
         if role == "actor" and optim_config is not None:
-            from verl.utils.torch_functional import get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup
+            from verl.utils.torch_functional import (
+                get_constant_schedule_with_warmup,
+                get_cosine_schedule_with_warmup,
+                get_linear_schedule_with_warmup,
+            )
 
             actor_optimizer = build_optimizer(actor_module_fsdp.parameters(), optim_config)
 
@@ -680,6 +684,13 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     num_training_steps=total_steps,
                     min_lr_ratio=min_lr_ratio,
                     num_cycles=num_cycles,
+                )
+            elif lr_scheduler_type == "linear":
+                actor_lr_scheduler = get_linear_schedule_with_warmup(
+                    optimizer=actor_optimizer,
+                    num_warmup_steps=num_warmup_steps,
+                    num_training_steps=total_steps,
+                    min_lr_ratio=min_lr_ratio,
                 )
             else:
                 raise NotImplementedError(f"LR scheduler type {lr_scheduler_type} is not supported")
@@ -1620,7 +1631,11 @@ class CriticWorker(Worker, DistProfilerExtension):
         if self.rank == 0:
             print(f"Total steps: {total_steps}, num_warmup_steps: {num_warmup_steps}")
 
-        from verl.utils.torch_functional import get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup
+        from verl.utils.torch_functional import (
+            get_constant_schedule_with_warmup,
+            get_cosine_schedule_with_warmup,
+            get_linear_schedule_with_warmup,
+        )
 
         if lr_scheduler_type == "constant":
             critic_lr_scheduler = get_constant_schedule_with_warmup(
@@ -1635,6 +1650,14 @@ class CriticWorker(Worker, DistProfilerExtension):
                 num_training_steps=total_steps,
                 min_lr_ratio=min_lr_ratio,
                 num_cycles=num_cycles,
+            )
+        elif lr_scheduler_type == "linear":
+            min_lr_ratio = config.optim.get("min_lr_ratio", 0.0)
+            critic_lr_scheduler = get_linear_schedule_with_warmup(
+                optimizer=critic_optimizer,
+                num_warmup_steps=num_warmup_steps,
+                num_training_steps=total_steps,
+                min_lr_ratio=min_lr_ratio,
             )
         else:
             raise NotImplementedError(f"LR scheduler type {lr_scheduler_type} is not supported")
