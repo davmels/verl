@@ -376,7 +376,17 @@ class FSDPModelMerger(BaseModelMerger):
                     # 2-D list, FSDP + TP
                     raise NotImplementedError("FSDP + TP is not supported yet")
             else:
-                state_dict[key] = torch.cat(state_dict[key], dim=0)
+                # A non-DTensor entry is replicated on every rank, not sharded, so
+                # there is nothing to concatenate: 0-dim (scalar) tensors cannot be
+                # cat'd at all, and cat'ing replicated values would be wrong anyway.
+                # Hit converting the 474-step online-DPO ckpt (2026-08-18). The same
+                # latent bug is in verl/model_merger/fsdp_model_merger.py:202.
+                _tensors = state_dict[key]
+                if _tensors[0].dim() == 0:
+                    print(f"[merger] replicated scalar {key!r}: taking rank-0 copy")
+                    state_dict[key] = _tensors[0]
+                else:
+                    state_dict[key] = torch.cat(_tensors, dim=0)
 
         return state_dict
 
