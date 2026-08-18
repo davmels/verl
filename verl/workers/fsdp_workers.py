@@ -867,6 +867,14 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
             aggressive_empty_cache(force_sync=True)
 
+        # Release PyTorch-cached blocks (freshly freed by the FSDP offload above and the
+        # actor update's transients) BEFORE SGLang re-creates its weight buffers:
+        # torch_memory_saver's cu_mem_create allocates at the CUDA *driver* level and
+        # cannot reuse memory pinned inside PyTorch's caching allocator. Without this,
+        # the step-1 weight resume dies with "CUresult error: 2 (out of memory)" —
+        # the aggressive_empty_cache above only runs under QAT, and the unconditional
+        # one below fires AFTER this resume, too late for the weight buffers.
+        aggressive_empty_cache(force_sync=True)
         if self.config.rollout.free_cache_engine:
             await self.rollout.resume(tags=["weights"])
         log_gpu_memory_usage("After resume weights", logger=logger)
